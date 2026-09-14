@@ -144,7 +144,7 @@ Al intentar crear, editar o reprogramar una tarea:
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
 | `POST` | `/api/v1/auth/register/` | Registro de usuario (retorna user + tokens `{ access, refresh }`) |
-| `POST` | `/api/v1/auth/token/` | Login JWT (retorna `{ access, refresh, user }`) |
+| `POST` | `/api/v1/auth/login/` | Login JWT (retorna `{ access, refresh, user }`) |
 | `POST` | `/api/v1/auth/token/refresh/` | Refrescar token JWT |
 | `GET` / `PUT` | `/api/v1/auth/profile/` | Ver y actualizar perfil (`daily_hour_limit`) |
 
