@@ -18,6 +18,7 @@ class RegisterView(generics.CreateAPIView):
     Endpoint para registrar nuevos usuarios.
     Retorna los datos del usuario y los tokens JWT (access y refresh).
     """
+
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
@@ -48,6 +49,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     Endpoint para ver y actualizar el perfil del usuario autenticado.
     Permite modificar daily_hour_limit, nombre, etc.
     """
+
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -57,4 +59,5 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     """Vista personalizada para obtención de tokens JWT con datos de usuario."""
+
     serializer_class = CustomTokenObtainPairSerializer

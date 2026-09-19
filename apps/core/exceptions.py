@@ -7,11 +7,20 @@ class DailyOverloadConflict(APIException):
     Excepción personalizada HTTP 409 Conflict.
     Se lanza cuando la programación de tareas excede el límite de horas diarias permitido para el usuario.
     """
+
     status_code = status.HTTP_409_CONFLICT
     default_detail = "La carga de horas programadas para esta fecha excede el límite diario configurado."
     default_code = "daily_overload_conflict"
 
-    def __init__(self, detail=None, code=None, target_date=None, current_hours=None, attempted_hours=None, daily_limit=None):
+    def __init__(
+        self,
+        detail=None,
+        code=None,
+        target_date=None,
+        current_hours=None,
+        attempted_hours=None,
+        daily_limit=None,
+    ):
         if detail is not None and isinstance(detail, dict):
             super().__init__(detail=detail, code=code)
         elif detail is not None:

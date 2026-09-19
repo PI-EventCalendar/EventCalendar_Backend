@@ -2,10 +2,15 @@
 
 from .base import *  # noqa: F403
 import os
+import dj_database_url
 
 DEBUG = False
+#Aquí se definen los hosts mediante una variable de entorno.
+ALLOWED_HOSTS = [
+    host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()
+]
 
-ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()]
+
 
 # Security headers for production
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

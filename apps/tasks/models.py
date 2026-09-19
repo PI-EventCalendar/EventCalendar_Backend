@@ -7,6 +7,7 @@ class TaskCategory(models.Model):
     Categoría para clasificar las tareas logísticas.
     El nombre es único por usuario.
     """
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -30,7 +31,7 @@ class TaskCategory(models.Model):
     def __str__(self):
         return f"{self.name} ({self.user.username})"
 
-
+#SUBTAREAS
 class LogisticTask(models.Model):
     """
     Tarea logística asociada a un evento.
@@ -38,9 +39,11 @@ class LogisticTask(models.Model):
     """
 
     class Status(models.TextChoices):
-        PENDING = "PENDING", "Pendiente"
-        COMPLETED = "COMPLETED", "Completada"
-        POSTPONED = "POSTPONED", "Pospuesta"
+        PENDING = 'pending', 'Pendiente'
+        IN_PROGRESS = 'in_progress', 'En Progreso'
+        COMPLETADA = 'completed', 'Completada'  # o 'completed'
+        CANCELLED = 'cancelled', 'Cancelada'
+        
 
     event = models.ForeignKey(
         "events.Event",
@@ -59,9 +62,13 @@ class LogisticTask(models.Model):
     title = models.CharField("título de la tarea", max_length=200)
     description = models.TextField("descripción", blank=True)
     provider_name = models.CharField("nombre del proveedor", max_length=150, blank=True)
-    provider_company = models.CharField("empresa del proveedor", max_length=150, blank=True)
+    provider_company = models.CharField(
+        "empresa del proveedor", max_length=150, blank=True
+    )
     scheduled_date = models.DateField("fecha programada")
-    estimated_hours = models.DecimalField("horas estimadas", max_digits=4, decimal_places=2)
+    estimated_hours = models.DecimalField(
+        "horas estimadas", max_digits=4, decimal_places=2
+    )
     status = models.CharField(
         "estado",
         max_length=20,
@@ -86,6 +93,7 @@ class RescheduleHistory(models.Model):
     Historial de reprogramación de una tarea logística.
     Registra cambios de fecha, horas estimadas, motivo y usuario que ejecutó la acción.
     """
+
     task = models.ForeignKey(
         LogisticTask,
         on_delete=models.CASCADE,
@@ -100,7 +108,9 @@ class RescheduleHistory(models.Model):
     )
     previous_date = models.DateField("fecha anterior")
     new_date = models.DateField("nueva fecha")
-    previous_hours = models.DecimalField("horas anteriores", max_digits=4, decimal_places=2)
+    previous_hours = models.DecimalField(
+        "horas anteriores", max_digits=4, decimal_places=2
+    )
     new_hours = models.DecimalField("nuevas horas", max_digits=4, decimal_places=2)
     reason = models.TextField("motivo de reprogramación")
     created_at = models.DateTimeField("fecha de cambio", auto_now_add=True)
@@ -112,3 +122,9 @@ class RescheduleHistory(models.Model):
 
     def __str__(self):
         return f"Reprogramación #{self.id} de Tarea '{self.task.title}' el {self.created_at.strftime('%Y-%m-%d')}"
+
+
+    from django.conf import settings
+from django.db import models
+
+#SUBTAREAS

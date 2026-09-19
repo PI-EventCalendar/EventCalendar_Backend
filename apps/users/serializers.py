@@ -46,7 +46,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if attrs.get("password") != attrs.get("password_confirm"):
-            raise serializers.ValidationError({"password_confirm": "Las contraseñas no coinciden."})
+            raise serializers.ValidationError(
+                {"password_confirm": "Las contraseñas no coinciden."}
+            )
         return attrs
 
     def create(self, validated_data):

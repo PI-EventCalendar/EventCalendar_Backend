@@ -4,27 +4,42 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='Event',
+            name="Event",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('title', models.CharField(max_length=200, verbose_name='título')),
-                ('description', models.TextField(blank=True, verbose_name='descripción')),
-                ('event_date', models.DateField(verbose_name='fecha del evento')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='creado el')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='actualizado el')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("title", models.CharField(max_length=200, verbose_name="título")),
+                (
+                    "description",
+                    models.TextField(blank=True, verbose_name="descripción"),
+                ),
+                ("event_date", models.DateField(verbose_name="fecha del evento")),
+                (
+                    "created_at",
+                    models.DateTimeField(auto_now_add=True, verbose_name="creado el"),
+                ),
+                (
+                    "updated_at",
+                    models.DateTimeField(auto_now=True, verbose_name="actualizado el"),
+                ),
             ],
             options={
-                'verbose_name': 'Evento',
-                'verbose_name_plural': 'Eventos',
-                'ordering': ['event_date', '-created_at'],
+                "verbose_name": "Evento",
+                "verbose_name_plural": "Eventos",
+                "ordering": ["event_date", "-created_at"],
             },
         ),
     ]
