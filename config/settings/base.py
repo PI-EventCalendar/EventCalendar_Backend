@@ -170,8 +170,9 @@ CORS_ALLOW_CREDENTIALS = True
 #SWAGER
 SPECTACULAR_SETTINGS = {
     'TITLE': 'EventCalendar',
-    'DESCRIPTION': 'Microproyecto #1',
+    'DESCRIPTION': 'Documentacion del Microproyecto #1 EventCalendar',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     # OTHER SETTINGS
+    'SCHEMA_PATH_PREFIX': r'/api/v1',
 }

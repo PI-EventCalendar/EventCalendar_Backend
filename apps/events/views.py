@@ -3,7 +3,8 @@ from apps.core.permissions import IsOwner
 from .models import Event
 from .serializers import EventSerializer
 from .services import EventService
-
+from drf_spectacular.utils import extend_schema
+@extend_schema(tags=["Events"])
 
 class EventViewSet(viewsets.ModelViewSet):
     """

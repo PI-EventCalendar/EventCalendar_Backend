@@ -10,6 +10,7 @@ from .serializers import (
     UserSerializer,
 )
 
+
 User = get_user_model()
 
 
