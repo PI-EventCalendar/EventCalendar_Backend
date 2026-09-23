@@ -46,13 +46,17 @@ class TaskService:
         return Decimal(str(total)) if total is not None else Decimal("0.00")
 
     @classmethod
-    def validate_daily_overload(cls, user, target_date, additional_hours: Decimal, exclude_task_id=None):
+    def validate_daily_overload(
+        cls, user, target_date, additional_hours: Decimal, exclude_task_id=None
+    ):
         """
         Verifica si agregar 'additional_hours' a la fecha 'target_date' excede el límite
         diario permitido para el usuario (user.daily_hour_limit).
         Si se sobrepasa, lanza una excepción DailyOverloadConflict (HTTP 409).
         """
-        current_hours = cls.get_daily_scheduled_hours(user, target_date, exclude_task_id=exclude_task_id)
+        current_hours = cls.get_daily_scheduled_hours(
+            user, target_date, exclude_task_id=exclude_task_id
+        )
         projected_hours = current_hours + Decimal(str(additional_hours))
         daily_limit = user.daily_hour_limit
 
@@ -88,7 +92,9 @@ class TaskService:
         }
 
     @classmethod
-    def reschedule_task(cls, task: LogisticTask, user, new_date, new_hours: Decimal, reason: str) -> LogisticTask:
+    def reschedule_task(
+        cls, task: LogisticTask, user, new_date, new_hours: Decimal, reason: str
+    ) -> LogisticTask:
         """
         Reprograma una tarea logística, validando la regla de sobrecarga para la nueva fecha,
         generando la auditoría en RescheduleHistory y actualizando la tarea en una transacción atómica.
@@ -117,6 +123,13 @@ class TaskService:
             task.scheduled_date = new_date
             task.estimated_hours = new_hours_decimal
             task.status = LogisticTask.Status.POSTPONED
-            task.save(update_fields=["scheduled_date", "estimated_hours", "status", "updated_at"])
+            task.save(
+                update_fields=[
+                    "scheduled_date",
+                    "estimated_hours",
+                    "status",
+                    "updated_at",
+                ]
+            )
 
         return task

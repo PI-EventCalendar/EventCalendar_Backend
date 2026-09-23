@@ -5,65 +5,169 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('events', '0001_initial'),
+        ("events", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='TaskCategory',
+            name="TaskCategory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=100, verbose_name='nombre de categoría')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='creado el')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        max_length=100, verbose_name="nombre de categoría"
+                    ),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(auto_now_add=True, verbose_name="creado el"),
+                ),
             ],
             options={
-                'verbose_name': 'Categoría de Tarea',
-                'verbose_name_plural': 'Categorías de Tareas',
-                'ordering': ['name'],
+                "verbose_name": "Categoría de Tarea",
+                "verbose_name_plural": "Categorías de Tareas",
+                "ordering": ["name"],
             },
         ),
         migrations.CreateModel(
-            name='LogisticTask',
+            name="LogisticTask",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('title', models.CharField(max_length=200, verbose_name='título de la tarea')),
-                ('description', models.TextField(blank=True, verbose_name='descripción')),
-                ('provider_name', models.CharField(blank=True, max_length=150, verbose_name='nombre del proveedor')),
-                ('provider_company', models.CharField(blank=True, max_length=150, verbose_name='empresa del proveedor')),
-                ('scheduled_date', models.DateField(verbose_name='fecha programada')),
-                ('estimated_hours', models.DecimalField(decimal_places=2, max_digits=4, verbose_name='horas estimadas')),
-                ('status', models.CharField(choices=[('PENDING', 'Pendiente'), ('COMPLETED', 'Completada'), ('POSTPONED', 'Pospuesta')], default='PENDING', max_length=20, verbose_name='estado')),
-                ('notes', models.TextField(blank=True, verbose_name='notas adicionales')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='creado el')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='actualizado el')),
-                ('event', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tasks', to='events.event', verbose_name='evento')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "title",
+                    models.CharField(max_length=200, verbose_name="título de la tarea"),
+                ),
+                (
+                    "description",
+                    models.TextField(blank=True, verbose_name="descripción"),
+                ),
+                (
+                    "provider_name",
+                    models.CharField(
+                        blank=True, max_length=150, verbose_name="nombre del proveedor"
+                    ),
+                ),
+                (
+                    "provider_company",
+                    models.CharField(
+                        blank=True, max_length=150, verbose_name="empresa del proveedor"
+                    ),
+                ),
+                ("scheduled_date", models.DateField(verbose_name="fecha programada")),
+                (
+                    "estimated_hours",
+                    models.DecimalField(
+                        decimal_places=2, max_digits=4, verbose_name="horas estimadas"
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("PENDING", "Pendiente"),
+                            ("COMPLETED", "Completada"),
+                            ("POSTPONED", "Pospuesta"),
+                        ],
+                        default="PENDING",
+                        max_length=20,
+                        verbose_name="estado",
+                    ),
+                ),
+                (
+                    "notes",
+                    models.TextField(blank=True, verbose_name="notas adicionales"),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(auto_now_add=True, verbose_name="creado el"),
+                ),
+                (
+                    "updated_at",
+                    models.DateTimeField(auto_now=True, verbose_name="actualizado el"),
+                ),
+                (
+                    "event",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="tasks",
+                        to="events.event",
+                        verbose_name="evento",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Tarea Logística',
-                'verbose_name_plural': 'Tareas Logísticas',
-                'ordering': ['scheduled_date', 'status', '-created_at'],
+                "verbose_name": "Tarea Logística",
+                "verbose_name_plural": "Tareas Logísticas",
+                "ordering": ["scheduled_date", "status", "-created_at"],
             },
         ),
         migrations.CreateModel(
-            name='RescheduleHistory',
+            name="RescheduleHistory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('previous_date', models.DateField(verbose_name='fecha anterior')),
-                ('new_date', models.DateField(verbose_name='nueva fecha')),
-                ('previous_hours', models.DecimalField(decimal_places=2, max_digits=4, verbose_name='horas anteriores')),
-                ('new_hours', models.DecimalField(decimal_places=2, max_digits=4, verbose_name='nuevas horas')),
-                ('reason', models.TextField(verbose_name='motivo de reprogramación')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='fecha de cambio')),
-                ('task', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reschedule_history', to='tasks.logistictask', verbose_name='tarea')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("previous_date", models.DateField(verbose_name="fecha anterior")),
+                ("new_date", models.DateField(verbose_name="nueva fecha")),
+                (
+                    "previous_hours",
+                    models.DecimalField(
+                        decimal_places=2, max_digits=4, verbose_name="horas anteriores"
+                    ),
+                ),
+                (
+                    "new_hours",
+                    models.DecimalField(
+                        decimal_places=2, max_digits=4, verbose_name="nuevas horas"
+                    ),
+                ),
+                ("reason", models.TextField(verbose_name="motivo de reprogramación")),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, verbose_name="fecha de cambio"
+                    ),
+                ),
+                (
+                    "task",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="reschedule_history",
+                        to="tasks.logistictask",
+                        verbose_name="tarea",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Historial de Reprogramación',
-                'verbose_name_plural': 'Historiales de Reprogramación',
-                'ordering': ['-created_at'],
+                "verbose_name": "Historial de Reprogramación",
+                "verbose_name_plural": "Historiales de Reprogramación",
+                "ordering": ["-created_at"],
             },
         ),
     ]

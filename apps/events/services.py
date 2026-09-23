@@ -1,6 +1,5 @@
 from .models import Event
 
-
 class EventService:
     """
     Servicio de lógica de negocio para la gestión de eventos.
@@ -24,12 +23,13 @@ class EventService:
         # Se accede a event.tasks.all() utilizando el prefetch cache existente
         tasks = list(event.tasks.all())
         total_tasks = len(tasks)
-        completed_tasks = sum(1 for task in tasks if task.status == "COMPLETED")
+        
+        # CORRECCIÓN: "completed" debe ir en minúsculas para coincidir exactamente 
+        # con el valor del TextChoices en el modelo LogisticTask.
+        completed_tasks = sum(1 for task in tasks if task.status == "completed")
 
         progress_percentage = (
-            round((completed_tasks / total_tasks) * 100, 2)
-            if total_tasks > 0
-            else 0.0
+            round((completed_tasks / total_tasks) * 100, 2) if total_tasks > 0 else 0.0
         )
 
         return {

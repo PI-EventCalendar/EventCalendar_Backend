@@ -23,7 +23,9 @@ class LogisticTaskListSerializer(serializers.ModelSerializer):
     """Serializer optimizado para listado y dashboard de tareas logísticas."""
 
     event_title = serializers.CharField(source="event.title", read_only=True)
-    category_name = serializers.CharField(source="category.name", read_only=True, default=None)
+    category_name = serializers.CharField(
+        source="category.name", read_only=True, default=None
+    )
 
     class Meta:
         model = LogisticTask
@@ -50,7 +52,9 @@ class LogisticTaskSerializer(serializers.ModelSerializer):
     """Serializer completo para CRUD de tareas logísticas con validación de sobrecarga diaria."""
 
     event_title = serializers.CharField(source="event.title", read_only=True)
-    category_name = serializers.CharField(source="category.name", read_only=True, default=None)
+    category_name = serializers.CharField(
+        source="category.name", read_only=True, default=None
+    )
 
     class Meta:
         model = LogisticTask
@@ -76,7 +80,9 @@ class LogisticTaskSerializer(serializers.ModelSerializer):
     def validate_event(self, value):
         user = self.context["request"].user
         if value.user != user:
-            raise serializers.ValidationError("No tienes permiso para asignar tareas a este evento.")
+            raise serializers.ValidationError(
+                "No tienes permiso para asignar tareas a este evento."
+            )
         return value
 
     def validate_category(self, value):
@@ -84,13 +90,19 @@ class LogisticTaskSerializer(serializers.ModelSerializer):
             return value
         user = self.context["request"].user
         if value.user != user:
-            raise serializers.ValidationError("No tienes permiso para utilizar esta categoría.")
+            raise serializers.ValidationError(
+                "No tienes permiso para utilizar esta categoría."
+            )
         return value
 
     def validate(self, attrs):
         user = self.context["request"].user
-        scheduled_date = attrs.get("scheduled_date", getattr(self.instance, "scheduled_date", None))
-        estimated_hours = attrs.get("estimated_hours", getattr(self.instance, "estimated_hours", None))
+        scheduled_date = attrs.get(
+            "scheduled_date", getattr(self.instance, "scheduled_date", None)
+        )
+        estimated_hours = attrs.get(
+            "estimated_hours", getattr(self.instance, "estimated_hours", None)
+        )
         exclude_id = self.instance.id if self.instance else None
 
         if scheduled_date and estimated_hours is not None:

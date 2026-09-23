@@ -8,6 +8,7 @@ class User(AbstractUser):
     Modelo de usuario personalizado para EventCalendar.
     Extiende AbstractUser e incorpora un límite diario de horas para tareas logísticas.
     """
+
     email = models.EmailField("correo electrónico", unique=True)
     daily_hour_limit = models.DecimalField(
         "límite de horas diarias",

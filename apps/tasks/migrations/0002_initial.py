@@ -6,32 +6,50 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('tasks', '0001_initial'),
+        ("tasks", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='reschedulehistory',
-            name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reschedule_actions', to=settings.AUTH_USER_MODEL, verbose_name='usuario que reprogramó'),
+            model_name="reschedulehistory",
+            name="user",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="reschedule_actions",
+                to=settings.AUTH_USER_MODEL,
+                verbose_name="usuario que reprogramó",
+            ),
         ),
         migrations.AddField(
-            model_name='taskcategory',
-            name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='task_categories', to=settings.AUTH_USER_MODEL, verbose_name='usuario'),
+            model_name="taskcategory",
+            name="user",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="task_categories",
+                to=settings.AUTH_USER_MODEL,
+                verbose_name="usuario",
+            ),
         ),
         migrations.AddField(
-            model_name='logistictask',
-            name='category',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='tasks', to='tasks.taskcategory', verbose_name='categoría'),
+            model_name="logistictask",
+            name="category",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="tasks",
+                to="tasks.taskcategory",
+                verbose_name="categoría",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='taskcategory',
-            constraint=models.UniqueConstraint(fields=('user', 'name'), name='unique_user_task_category'),
+            model_name="taskcategory",
+            constraint=models.UniqueConstraint(
+                fields=("user", "name"), name="unique_user_task_category"
+            ),
         ),
     ]

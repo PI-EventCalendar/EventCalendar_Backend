@@ -13,11 +13,14 @@ from .serializers import (
 )
 from .services import TaskService
 
+from drf_spectacular.utils import extend_schema
+@extend_schema(tags=["Tasks"])
 
 class TaskCategoryViewSet(viewsets.ModelViewSet):
     """
     CRUD para categorías de tareas pertenecientes al usuario autenticado.
     """
+
     serializer_class = TaskCategorySerializer
     permission_classes = [permissions.IsAuthenticated, IsOwner]
 
@@ -32,6 +35,7 @@ class LogisticTaskViewSet(viewsets.ModelViewSet):
     CRUD para tareas logísticas con endpoints adicionales para reprogramar y consultar historial.
     Asegura optimización con select_related y permisos por usuario.
     """
+
     permission_classes = [permissions.IsAuthenticated, IsOwner]
 
     def get_serializer_class(self):
