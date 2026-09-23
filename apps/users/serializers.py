@@ -64,6 +64,51 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Serializer personalizado para JWT que agrega datos del usuario en la respuesta."""
 
     def validate(self, attrs):
+
+         # ============================================================
+        # 1. OBTENER LO QUE ESCRIBIÓ EL USUARIO
+        # ============================================================
+        #
+        # El frontend siempre envía este campo como "username".
+        #
+        identifier = attrs.get("username")
+        # ============================================================
+        # 2. BUSCAR PRIMERO POR USERNAME
+        # ============================================================
+        # Intentamos encontrar un usuario cuyo username
+        # coincida con lo que escribió el usuario.
+    
+        user = User.objects.filter(
+            username=identifier
+        ).first()
+
+        # 3. SI NO EXISTE, BUSCAR POR EMAIL
+        # ============================================================
+        # Si no encontramos un username, intentamos buscar
+        # por correo electrónico.
+        if user is None:
+            user = User.objects.filter(
+                email__iexact=identifier
+            ).first()
+
+        # 4. CONVERTIR EMAIL → USERNAME
+        # ============================================================
+        #
+        # SimpleJWT espera que "username" contenga el username.
+        #
+        # Si el usuario inició sesión utilizando su correo,
+        # reemplazamos temporalmente:
+        #
+        # 
+        # De esta manera podemos seguir utilizando
+        # el sistema estándar de autenticación de Django.
+        # ============================================================
+        # 5. AUTENTICACIÓN NORMAL DE SIMPLEJWT
+        # ============================================================
+        if user is not None:
+            attrs["username"] = user.username
+
+
         data = super().validate(attrs)
         data["user"] = {
             "id": self.user.id,

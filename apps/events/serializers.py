@@ -1,5 +1,5 @@
 from rest_framework import serializers
-
+from decimal import Decimal
 from .models import Event
 from .services import EventService
 
@@ -7,12 +7,35 @@ from apps.tasks.models import LogisticTask
 
 
 class NestedTaskCreateSerializer(serializers.ModelSerializer):
+
     """
-    Serializador simplificado EXCLUSIVO para recibir tareas al momento de crear un Evento.
+    Serializador simplificado EXCLUSIVO para recibir tareas
+    al momento de crear un Evento.
+
+    Se utiliza cuando un evento y sus subtareas se crean
+    mediante una sola petición POST /api/v1/events/.
     """
+
+    # ============================================================
+    # VALIDACIÓN DE HORAS ESTIMADAS
+    # ============================================================
+    
+    # ============================================================
+
+    estimated_hours = serializers.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+    )
+
     class Meta:
         model = LogisticTask
-        fields = ['title', 'scheduled_date', 'estimated_hours', 'status']
+        fields = [
+            'title',
+            'scheduled_date',
+            'estimated_hours',
+            'status'
+        ]
 
 
 class EventSerializer(serializers.ModelSerializer):
@@ -80,4 +103,14 @@ class EventSerializer(serializers.ModelSerializer):
         for task_data in tasks_data:
             LogisticTask.objects.create(event=event, **task_data)
             
+
         return event
+
+    # NUEVO
+    def validate_activity_type(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError(
+                "El tipo de actividad es obligatorio."
+            )
+
+        return value
