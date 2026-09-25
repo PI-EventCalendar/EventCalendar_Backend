@@ -122,12 +122,10 @@ class TaskService:
 
             task.scheduled_date = new_date
             task.estimated_hours = new_hours_decimal
-            task.status = LogisticTask.Status.POSTPONED
             task.save(
                 update_fields=[
                     "scheduled_date",
                     "estimated_hours",
-                    "status",
                     "updated_at",
                 ]
             )
