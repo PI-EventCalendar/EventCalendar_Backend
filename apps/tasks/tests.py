@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
 
 from apps.core.exceptions import DailyOverloadConflict
 from apps.events.models import Event
@@ -80,7 +81,7 @@ class TaskServiceOverloadTest(TestCase):
 
         self.assertEqual(updated_task.scheduled_date, new_date)
         self.assertEqual(updated_task.estimated_hours, Decimal("2.50"))
-        self.assertEqual(updated_task.status, LogisticTask.Status.POSTPONED)
+        self.assertEqual(updated_task.status, LogisticTask.Status.PENDING)
 
         history = RescheduleHistory.objects.filter(task=task).first()
         self.assertIsNotNone(history)
@@ -89,3 +90,58 @@ class TaskServiceOverloadTest(TestCase):
         self.assertEqual(history.previous_hours, Decimal("3.00"))
         self.assertEqual(history.new_hours, Decimal("2.50"))
         self.assertEqual(history.reason, "Retraso en el envío de equipos")
+
+
+class TaskRescheduleApiTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="rescheduler",
+            email="rescheduler@example.com",
+            password="securepassword123",
+        )
+        self.event = Event.objects.create(
+            user=self.user,
+            title="Actividad de prueba",
+            course="Proyecto Integrador",
+            event_date=date.today() + timedelta(days=10),
+        )
+        self.task = LogisticTask.objects.create(
+            event=self.event,
+            title="Buscar proveedor",
+            scheduled_date=date.today(),
+            estimated_hours=Decimal("1.00"),
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_patch_scheduled_date_persists_the_reschedule(self):
+        new_date = date.today() + timedelta(days=4)
+
+        response = self.client.patch(
+            f"/api/v1/tasks/{self.task.id}/",
+            {"scheduled_date": new_date.isoformat()},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["scheduled_date"], new_date.isoformat())
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.scheduled_date, new_date)
+
+    def test_patch_rejects_an_invalid_scheduled_date(self):
+        response = self.client.patch(
+            f"/api/v1/tasks/{self.task.id}/",
+            {"scheduled_date": "not-a-date"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.scheduled_date, date.today())
+
+    def test_task_list_includes_the_event_course_for_filters(self):
+        response = self.client.get("/api/v1/tasks/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"][0]["event_title"], self.event.title)
+        self.assertEqual(response.data["results"][0]["event_course"], self.event.course)

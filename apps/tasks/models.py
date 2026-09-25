@@ -41,7 +41,7 @@ class LogisticTask(models.Model):
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pendiente'
         IN_PROGRESS = 'in_progress', 'En Progreso'
-        COMPLETADA = 'completed', 'Completada'  # o 'completed'
+        COMPLETED = 'completed', 'Completada'
         CANCELLED = 'cancelled', 'Cancelada'
         
 
