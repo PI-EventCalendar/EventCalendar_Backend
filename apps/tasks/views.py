@@ -14,7 +14,7 @@ from .serializers import (
 from .services import TaskService
 
 from drf_spectacular.utils import extend_schema
-@extend_schema(tags=["Tasks"])
+#@extend_schema(tags=["Tasks"])
 
 class TaskCategoryViewSet(viewsets.ModelViewSet):
     """
