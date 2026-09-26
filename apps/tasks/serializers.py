@@ -23,6 +23,7 @@ class LogisticTaskListSerializer(serializers.ModelSerializer):
     """Serializer optimizado para listado y dashboard de tareas logísticas."""
 
     event_title = serializers.CharField(source="event.title", read_only=True)
+    event_course = serializers.CharField(source="event.course", read_only=True, default="")
     category_name = serializers.CharField(
         source="category.name", read_only=True, default=None
     )
@@ -33,6 +34,7 @@ class LogisticTaskListSerializer(serializers.ModelSerializer):
             "id",
             "event",
             "event_title",
+            "event_course",
             "category",
             "category_name",
             "title",
@@ -52,6 +54,7 @@ class LogisticTaskSerializer(serializers.ModelSerializer):
     """Serializer completo para CRUD de tareas logísticas con validación de sobrecarga diaria."""
 
     event_title = serializers.CharField(source="event.title", read_only=True)
+    event_course = serializers.CharField(source="event.course", read_only=True, default="")
     category_name = serializers.CharField(
         source="category.name", read_only=True, default=None
     )
@@ -62,6 +65,7 @@ class LogisticTaskSerializer(serializers.ModelSerializer):
             "id",
             "event",
             "event_title",
+            "event_course",
             "category",
             "category_name",
             "title",
