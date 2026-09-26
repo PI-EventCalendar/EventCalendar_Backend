@@ -88,12 +88,12 @@ class EventSerializer(serializers.ModelSerializer):
     def get_completed_tasks(self, obj) -> int:
         return self._get_metrics(obj)["completed_tasks"]
 
-    # --- LÓGICA DE CREACIÓN FUSIONADA (T1) ---
+    # --- LÓGICA DE CREACIÓN  ---
     def create(self, validated_data):
-        # 1. Asignamos el usuario (Tu lógica original)
+        # 1. Asignamos el usuario 
         validated_data["user"] = self.context["request"].user
         
-        # 2. Extraemos las tareas del JSON (Nuestra nueva lógica)
+        # 2. Extraemos las tareas del JSON
         tasks_data = validated_data.pop('tasks', [])
         
         # 3. Creamos el Evento principal usando super()
