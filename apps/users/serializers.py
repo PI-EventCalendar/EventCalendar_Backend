@@ -21,6 +21,13 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "date_joined"]
 
+    def validate_daily_hour_limit(self, value):
+        if value < 1 or value > 16:
+            raise serializers.ValidationError(
+                "La capacidad diaria debe estar entre 1 y 16 horas"
+            )
+        return value
+
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Serializer para registro de nuevos usuarios."""
