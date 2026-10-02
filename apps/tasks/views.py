@@ -1,8 +1,10 @@
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.permissions import IsOwner
+
 from .models import LogisticTask, TaskCategory
 from .serializers import (
     LogisticTaskListSerializer,
@@ -13,8 +15,8 @@ from .serializers import (
 )
 from .services import TaskService
 
-from drf_spectacular.utils import extend_schema
-#@extend_schema(tags=["Tasks"])
+# @extend_schema(tags=["Tasks"])
+
 
 class TaskCategoryViewSet(viewsets.ModelViewSet):
     """
@@ -94,3 +96,72 @@ class LogisticTaskViewSet(viewsets.ModelViewSet):
         history_qs = task.reschedule_history.all().select_related("user")
         serializer = RescheduleHistorySerializer(history_qs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Consultar tareas de Hoy",
+        description=(
+            "Obtiene las subtareas del usuario autenticado que aún no han sido "
+            "completadas. Permite filtrar opcionalmente por evento y estado."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="event",
+                description="ID del evento al que pertenecen las subtareas.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="status",
+                description="Estado de la subtarea.",
+                required=False,
+                type=OpenApiTypes.STR,
+                enum=[
+                    "pending",
+                    "in_progress",
+                    "completed",
+                    "cancelled",
+                ],
+            ),
+        ],
+        responses=LogisticTaskListSerializer(many=True),
+        tags=["Hoy"],
+    )
+    # Este crea la ruta (como las tareas ya estaban en ligistictask la pagina hoy solo consumia.)
+
+    @action(detail=False, methods=["get"], url_path="hoy")
+    def hoy(self, request):
+        """
+        Consulta las subtareas pendientes del usuario para la vista Hoy.
+
+        Permite filtrar por:
+        - evento
+        - estado
+
+        Utiliza la misma paginación global configurada
+        para el resto de los endpoints.
+        """
+
+        queryset = self.get_queryset()
+
+        # La vista Hoy no muestra tareas completadas
+        queryset = queryset.exclude(status="completed")
+
+        # Filtro por estado
+        status_filter = request.query_params.get("status")
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        # Utilizar la paginación global de DRF
+        page = self.paginate_queryset(queryset)
+
+        if page is not None:
+            serializer = LogisticTaskListSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        # Fallback por seguridad si la paginación estuviera deshabilitada
+        serializer = LogisticTaskListSerializer(queryset, many=True)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
