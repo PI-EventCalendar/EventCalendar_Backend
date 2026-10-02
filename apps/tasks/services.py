@@ -37,6 +37,7 @@ class TaskService:
         queryset = LogisticTask.objects.filter(
             event__user=user,
             scheduled_date=target_date,
+            status__in=[LogisticTask.Status.PENDING, LogisticTask.Status.IN_PROGRESS],
         )
         if exclude_task_id:
             queryset = queryset.exclude(id=exclude_task_id)
@@ -44,6 +45,28 @@ class TaskService:
         aggregate_result = queryset.aggregate(total_hours=Sum("estimated_hours"))
         total = aggregate_result["total_hours"]
         return Decimal(str(total)) if total is not None else Decimal("0.00")
+
+    @classmethod
+    def validate_task_plan(cls, user, tasks):
+        """Validate a complete proposed plan, grouping hours by calendar day."""
+        totals = {}
+        for task in tasks:
+            status = task.get("status", LogisticTask.Status.PENDING)
+            if status in (LogisticTask.Status.COMPLETED, LogisticTask.Status.POSTPONED, LogisticTask.Status.CANCELLED):
+                continue
+            date = task.get("scheduled_date")
+            if date is not None:
+                totals[date] = totals.get(date, Decimal("0.00")) + Decimal(str(task.get("estimated_hours", 0)))
+        for date, hours in totals.items():
+            # El payload de eventos representa el plan completo; no se suma
+            # nuevamente contra las tareas que ya pertenecen a ese evento.
+            if hours > user.daily_hour_limit:
+                raise DailyOverloadConflict(
+                    target_date=date,
+                    current_hours=Decimal("0.00"),
+                    attempted_hours=hours,
+                    daily_limit=user.daily_hour_limit,
+                )
 
     @classmethod
     def validate_daily_overload(

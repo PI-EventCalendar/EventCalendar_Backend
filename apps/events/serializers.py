@@ -38,7 +38,8 @@ class NestedTaskCreateSerializer(serializers.ModelSerializer):
             'title',
             'scheduled_date',
             'estimated_hours',
-            'status'
+            'status',
+            'notes',
         ]
 
      
@@ -102,6 +103,8 @@ class EventSerializer(serializers.ModelSerializer):
         
         # 2. Extraemos las tareas del JSON
         tasks_data = validated_data.pop('tasks', [])
+        from apps.tasks.services import TaskService
+        TaskService.validate_task_plan(validated_data["user"], tasks_data)
         
         # 3. Creamos el Evento principal usando super()
         event = super().create(validated_data)
@@ -138,6 +141,10 @@ class EventSerializer(serializers.ModelSerializer):
 
         # Sacamos las subtareas antes de actualizar el evento.
         tasks_data = validated_data.pop('tasks', None)
+
+        if tasks_data is not None:
+            from apps.tasks.services import TaskService
+            TaskService.validate_task_plan(instance.user, tasks_data)
 
         # Actualizamos los datos principales del evento.
         instance = super().update(instance, validated_data)

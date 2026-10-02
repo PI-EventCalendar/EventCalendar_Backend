@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
 
 from apps.events.models import Event
 from apps.events.services import EventService
@@ -51,3 +52,24 @@ class EventProgressServiceTest(TestCase):
         self.assertEqual(metrics["total_tasks"], 2)
         self.assertEqual(metrics["completed_tasks"], 1)
         self.assertEqual(metrics["progress_percentage"], 50.0)
+
+    def test_update_event_accepts_new_nested_task_without_fake_id(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.patch(
+            f"/api/v1/events/{self.event.id}/",
+            {
+                "title": self.event.title,
+                "event_date": str(self.event.event_date),
+                "tasks": [{
+                    "title": "Nueva subtarea",
+                    "scheduled_date": str(date.today()),
+                    "estimated_hours": "2.00",
+                    "status": "pending",
+                }],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.event.tasks.count(), 1)
+        self.assertEqual(self.event.tasks.first().title, "Nueva subtarea")

@@ -42,6 +42,7 @@ class LogisticTask(models.Model):
         PENDING = 'pending', 'Pendiente'
         IN_PROGRESS = 'in_progress', 'En Progreso'
         COMPLETED = 'completed', 'Completada'
+        POSTPONED = 'postponed', 'Pospuesta'
         CANCELLED = 'cancelled', 'Cancelada'
         
 
