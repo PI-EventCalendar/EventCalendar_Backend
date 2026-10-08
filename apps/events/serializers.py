@@ -64,6 +64,7 @@ class EventSerializer(serializers.ModelSerializer):
             "course",          
             "activity_type",   
             "description",
+            "location",
             "event_date",
             "progress_percentage",
             "total_tasks",
@@ -144,7 +145,7 @@ class EventSerializer(serializers.ModelSerializer):
 
         if tasks_data is not None:
             from apps.tasks.services import TaskService
-            TaskService.validate_task_plan(instance.user, tasks_data)
+            TaskService.validate_task_plan(instance.user, tasks_data, replace_event_id=instance.id)
 
         # Actualizamos los datos principales del evento.
         instance = super().update(instance, validated_data)

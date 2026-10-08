@@ -21,6 +21,7 @@ class Event(models.Model):
     activity_type = models.CharField("tipo de actividad", max_length=100, blank=True, null=True)
     
     description = models.TextField("descripción", blank=True)
+    location = models.CharField("lugar", max_length=255, blank=True, default="")
     
     # fecha límite de entrega
     event_date = models.DateField("fecha límite de entrega") 
