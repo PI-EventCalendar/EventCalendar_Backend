@@ -47,24 +47,35 @@ class TaskService:
         return Decimal(str(total)) if total is not None else Decimal("0.00")
 
     @classmethod
-    def validate_task_plan(cls, user, tasks):
-        """Validate a complete proposed plan, grouping hours by calendar day."""
+    def validate_task_plan(cls, user, tasks, replace_event_id=None):
+        """Validate a complete plan against the user's global daily workload."""
         totals = {}
+        existing_totals = {}
+        existing = LogisticTask.objects.filter(
+            event__user=user,
+            status__in=[LogisticTask.Status.PENDING, LogisticTask.Status.IN_PROGRESS],
+        )
+        if replace_event_id is not None:
+            existing = existing.exclude(event_id=replace_event_id)
+        for date, hours in existing.values_list("scheduled_date").annotate(total=Sum("estimated_hours")):
+            existing_totals[date] = Decimal(str(hours))
+            totals[date] = existing_totals[date]
+        proposed_totals = {}
         for task in tasks:
             status = task.get("status", LogisticTask.Status.PENDING)
             if status in (LogisticTask.Status.COMPLETED, LogisticTask.Status.POSTPONED, LogisticTask.Status.CANCELLED):
                 continue
             date = task.get("scheduled_date")
             if date is not None:
-                totals[date] = totals.get(date, Decimal("0.00")) + Decimal(str(task.get("estimated_hours", 0)))
+                hours = Decimal(str(task.get("estimated_hours", 0)))
+                proposed_totals[date] = proposed_totals.get(date, Decimal("0.00")) + hours
+                totals[date] = totals.get(date, Decimal("0.00")) + hours
         for date, hours in totals.items():
-            # El payload de eventos representa el plan completo; no se suma
-            # nuevamente contra las tareas que ya pertenecen a ese evento.
             if hours > user.daily_hour_limit:
                 raise DailyOverloadConflict(
                     target_date=date,
-                    current_hours=Decimal("0.00"),
-                    attempted_hours=hours,
+                    current_hours=existing_totals.get(date, Decimal("0.00")),
+                    attempted_hours=proposed_totals.get(date, Decimal("0.00")),
                     daily_limit=user.daily_hour_limit,
                 )
 

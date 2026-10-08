@@ -73,3 +73,35 @@ class EventProgressServiceTest(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self.event.tasks.count(), 1)
         self.assertEqual(self.event.tasks.first().title, "Nueva subtarea")
+
+    def test_update_event_uses_global_capacity_from_other_events(self):
+        other = Event.objects.create(user=self.user, title="Otro", event_date=date.today())
+        LogisticTask.objects.create(event=other, title="Existente", scheduled_date=date.today(), estimated_hours=Decimal("5.00"))
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.patch(f"/api/v1/events/{self.event.id}/", {"tasks": [{"title": "Nueva", "scheduled_date": str(date.today()), "estimated_hours": "1.01", "status": "pending"}]}, format="json")
+        self.assertEqual(response.status_code, 409, response.data)
+
+    def test_update_event_allows_global_capacity_exact_limit(self):
+        other = Event.objects.create(user=self.user, title="Otro", event_date=date.today())
+        LogisticTask.objects.create(event=other, title="Existente", scheduled_date=date.today(), estimated_hours=Decimal("5.00"))
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.patch(f"/api/v1/events/{self.event.id}/", {"tasks": [{"title": "Nueva", "scheduled_date": str(date.today()), "estimated_hours": "1.00", "status": "pending"}]}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_create_event_uses_global_capacity(self):
+        other = Event.objects.create(user=self.user, title="Otro", event_date=date.today())
+        LogisticTask.objects.create(event=other, title="Existente", scheduled_date=date.today(), estimated_hours=Decimal("5.00"))
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.post("/api/v1/events/", {"title": "Nuevo", "activity_type": "Conferencia", "event_date": str(date.today()), "tasks": [{"title": "Nueva", "scheduled_date": str(date.today()), "estimated_hours": "1.01", "status": "pending"}]}, format="json")
+        self.assertEqual(response.status_code, 409, response.data)
+
+    def test_event_location_persists_and_is_returned(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.post("/api/v1/events/", {"title": "Con lugar", "activity_type": "Conferencia", "event_date": str(date.today()), "location": "Finca El Encinar"}, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["location"], "Finca El Encinar")
+        self.assertEqual(client.get(f"/api/v1/events/{response.data['id']}/").data["location"], "Finca El Encinar")
