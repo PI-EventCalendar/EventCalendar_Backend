@@ -1,13 +1,14 @@
-from rest_framework import serializers
 from decimal import Decimal
+
+from rest_framework import serializers
+
+from apps.tasks.models import LogisticTask
+
 from .models import Event
 from .services import EventService
 
-from apps.tasks.models import LogisticTask 
-
 
 class NestedTaskCreateSerializer(serializers.ModelSerializer):
-
     """
     Serializador simplificado EXCLUSIVO para recibir tareas
     al momento de crear un Evento.
@@ -15,6 +16,7 @@ class NestedTaskCreateSerializer(serializers.ModelSerializer):
     Se utiliza cuando un evento y sus subtareas se crean
     mediante una sola petición POST /api/v1/events/.
     """
+
     # Permitimos recibir el ID cuando estamos editando
     # una subtarea existente.
     id = serializers.IntegerField(required=False)
@@ -22,7 +24,7 @@ class NestedTaskCreateSerializer(serializers.ModelSerializer):
     # ============================================================
     # VALIDACIÓN DE HORAS ESTIMADAS
     # ============================================================
-    
+
     # ============================================================
 
     estimated_hours = serializers.DecimalField(
@@ -34,17 +36,14 @@ class NestedTaskCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = LogisticTask
         fields = [
-            'id',
-            'title',
-            'scheduled_date',
-            'estimated_hours',
-            'status',
-            'notes',
+            "id",
+            "title",
+            "scheduled_date",
+            "estimated_hours",
+            "status",
+            "notes",
         ]
 
-     
-
-  
 
 class EventSerializer(serializers.ModelSerializer):
     """Serializer para modelo Event con métricas de progreso calculadas en memoria y creación anidada."""
@@ -52,8 +51,8 @@ class EventSerializer(serializers.ModelSerializer):
     progress_percentage = serializers.SerializerMethodField()
     total_tasks = serializers.SerializerMethodField()
     completed_tasks = serializers.SerializerMethodField()
-    
-    #Campo para recibir el array de tareas en el JSON
+
+    # Campo para recibir el array de tareas en el JSON
     tasks = NestedTaskCreateSerializer(many=True, required=False)
 
     class Meta:
@@ -61,15 +60,15 @@ class EventSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
-            "course",          
-            "activity_type",   
+            "course",
+            "activity_type",
             "description",
             "location",
             "event_date",
             "progress_percentage",
             "total_tasks",
             "completed_tasks",
-            "tasks",           #CREACION ANIDADA
+            "tasks",  # CREACION ANIDADA
             "created_at",
             "updated_at",
         ]
@@ -97,40 +96,80 @@ class EventSerializer(serializers.ModelSerializer):
     def get_completed_tasks(self, obj) -> int:
         return self._get_metrics(obj)["completed_tasks"]
 
+        def validate(self, attrs):
+            user = (
+                self.context.get("request").user if "request" in self.context else None
+            )
+            tasks_data = attrs.get("tasks", [])
+            event_date = attrs.get(
+                "event_date", getattr(self.instance, "event_date", None)
+            )
+
+            if event_date and tasks_data:
+                for task_data in tasks_data:
+                    s_date = task_data.get("scheduled_date")
+                    if s_date and s_date > event_date:
+                        raise serializers.ValidationError(
+                            {
+                                "tasks": "La fecha programada de una tarea no puede ser posterior a la fecha del evento."
+                            }
+                        )
+
+            if self.instance and event_date and "tasks" not in attrs:
+                if self.instance.tasks.filter(scheduled_date__gt=event_date).exists():
+                    raise serializers.ValidationError(
+                        {
+                            "event_date": "La nueva fecha del evento no puede ser anterior a las tareas ya programadas."
+                        }
+                    )
+
+            if user and tasks_data:
+                from apps.tasks.services import TaskService
+
+                daily_hours = {}
+                for task_data in tasks_data:
+                    s_date = task_data.get("scheduled_date")
+                    e_hours = task_data.get("estimated_hours")
+                    if s_date and e_hours:
+                        daily_hours[s_date] = daily_hours.get(
+                            s_date, Decimal("0.00")
+                        ) + Decimal(str(e_hours))
+                for s_date, total_add_hours in daily_hours.items():
+                    TaskService.validate_daily_overload(
+                        user=user,
+                        target_date=s_date,
+                        additional_hours=total_add_hours,
+                        max_date=event_date,
+                    )
+            return attrs
+
     # --- LÓGICA DE CREACIÓN  ---
     def create(self, validated_data):
-        # 1. Asignamos el usuario 
+        # 1. Asignamos el usuario
         validated_data["user"] = self.context["request"].user
-        
+
         # 2. Extraemos las tareas del JSON
-        tasks_data = validated_data.pop('tasks', [])
+        tasks_data = validated_data.pop("tasks", [])
         from apps.tasks.services import TaskService
+
         TaskService.validate_task_plan(validated_data["user"], tasks_data)
-        
+
         # 3. Creamos el Evento principal usando super()
         event = super().create(validated_data)
-        
-         # 4. Creamos cada subtarea.
-        for task_data in tasks_data:
 
+        # 4. Creamos cada subtarea.
+        for task_data in tasks_data:
             # El frontend puede enviar un ID temporal
             # para manejar la interfaz.
             #
             # Ese ID NO debe guardarse en Django.
-            task_data.pop('id', None)
+            task_data.pop("id", None)
 
-            LogisticTask.objects.create(
-                event=event,
-                **task_data
-            )
-
+            LogisticTask.objects.create(event=event, **task_data)
 
         return event
- 
 
     def update(self, instance, validated_data):
-
-
         """
         Actualiza un evento existente y sus subtareas.
 
@@ -141,11 +180,14 @@ class EventSerializer(serializers.ModelSerializer):
         """
 
         # Sacamos las subtareas antes de actualizar el evento.
-        tasks_data = validated_data.pop('tasks', None)
+        tasks_data = validated_data.pop("tasks", None)
 
         if tasks_data is not None:
             from apps.tasks.services import TaskService
-            TaskService.validate_task_plan(instance.user, tasks_data, replace_event_id=instance.id)
+
+            TaskService.validate_task_plan(
+                instance.user, tasks_data, replace_event_id=instance.id
+            )
 
         # Actualizamos los datos principales del evento.
         instance = super().update(instance, validated_data)
@@ -158,9 +200,8 @@ class EventSerializer(serializers.ModelSerializer):
         task_ids = []
 
         for task_data in tasks_data:
-
             # Obtenemos el ID si viene desde el frontend.
-            task_id = task_data.pop('id', None)
+            task_id = task_data.pop("id", None)
 
             if task_id is not None:
                 # -------------------------------------------------
@@ -173,12 +214,14 @@ class EventSerializer(serializers.ModelSerializer):
                     task = instance.tasks.get(id=task_id)
 
                 except LogisticTask.DoesNotExist:
-                    raise serializers.ValidationError({
-                        "tasks": (
-                            f"La subtarea con ID {task_id} "
-                            "no pertenece a este evento."
-                        )
-                    })
+                    raise serializers.ValidationError(
+                        {
+                            "tasks": (
+                                f"La subtarea con ID {task_id} "
+                                "no pertenece a este evento."
+                            )
+                        }
+                    )
 
                 # Actualizamos los campos de la subtarea.
                 for field, value in task_data.items():
@@ -194,10 +237,7 @@ class EventSerializer(serializers.ModelSerializer):
                 # SUBTAREA NUEVA
                 # -------------------------------------------------
 
-                task = LogisticTask.objects.create(
-                    event=instance,
-                    **task_data
-                )
+                task = LogisticTask.objects.create(event=instance, **task_data)
 
                 task_ids.append(task.id)
 
@@ -209,12 +249,9 @@ class EventSerializer(serializers.ModelSerializer):
 
         return instance
 
-
     # NUEVO
     def validate_activity_type(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError(
-                "El tipo de actividad es obligatorio."
-            )
+            raise serializers.ValidationError("El tipo de actividad es obligatorio.")
 
         return value

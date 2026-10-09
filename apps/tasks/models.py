@@ -1,4 +1,7 @@
+# pyright: reportAttributeAccessIssue=false
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -31,7 +34,8 @@ class TaskCategory(models.Model):
     def __str__(self):
         return f"{self.name} ({self.user.username})"
 
-#SUBTAREAS
+
+# SUBTAREAS
 class LogisticTask(models.Model):
     """
     Tarea logística asociada a un evento.
@@ -39,12 +43,11 @@ class LogisticTask(models.Model):
     """
 
     class Status(models.TextChoices):
-        PENDING = 'pending', 'Pendiente'
-        IN_PROGRESS = 'in_progress', 'En Progreso'
-        COMPLETED = 'completed', 'Completada'
-        POSTPONED = 'postponed', 'Pospuesta'
-        CANCELLED = 'cancelled', 'Cancelada'
-        
+        PENDING = "pending", "Pendiente"
+        IN_PROGRESS = "in_progress", "En Progreso"
+        COMPLETED = "completed", "Completada"
+        POSTPONED = "postponed", "Pospuesta"
+        CANCELLED = "cancelled", "Cancelada"
 
     event = models.ForeignKey(
         "events.Event",
@@ -84,6 +87,16 @@ class LogisticTask(models.Model):
         verbose_name = "Tarea Logística"
         verbose_name_plural = "Tareas Logísticas"
         ordering = ["scheduled_date", "status", "-created_at"]
+
+    def clean(self):
+        super().clean()
+        if hasattr(self, "event") and self.event and self.scheduled_date:
+            if self.scheduled_date > self.event.event_date:
+                raise ValidationError(
+                    {
+                        "scheduled_date": "La fecha de la tarea no puede ser posterior a la fecha del evento."
+                    }
+                )
 
     def __str__(self):
         return f"{self.title} - {self.scheduled_date} ({self.status})"
@@ -125,7 +138,4 @@ class RescheduleHistory(models.Model):
         return f"Reprogramación #{self.id} de Tarea '{self.task.title}' el {self.created_at.strftime('%Y-%m-%d')}"
 
 
-    from django.conf import settings
-from django.db import models
-
-#SUBTAREAS
+# SUBTAREAS
