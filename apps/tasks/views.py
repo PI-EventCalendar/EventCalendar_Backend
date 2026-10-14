@@ -89,6 +89,11 @@ class LogisticTaskViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        summary="Consultar historial de reprogramaciones",
+        responses={200: RescheduleHistorySerializer(many=True)},
+        tags=["Tasks"],
+    )
     @action(detail=True, methods=["get"], url_path="history")
     def history(self, request, pk=None):
         """
