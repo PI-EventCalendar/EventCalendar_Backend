@@ -1,7 +1,8 @@
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -29,6 +30,22 @@ class TaskService:
     DEFAULT_DAILY_HOUR_LIMIT = DEFAULT_DAILY_HOUR_LIMIT
     MIN_TASK_HOURS = MIN_TASK_HOURS
     MAX_TASK_HOURS = MAX_TASK_HOURS
+    CAPACITY_STATUSES = (
+        LogisticTask.Status.PENDING,
+        LogisticTask.Status.IN_PROGRESS,
+        LogisticTask.Status.POSTPONED,
+    )
+
+    @classmethod
+    def get_daily_hour_limit(cls, user) -> Decimal:
+        configured = getattr(user, "daily_hour_limit", None)
+        try:
+            limit = cls.DEFAULT_DAILY_HOUR_LIMIT if configured is None else Decimal(str(configured))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValidationError({"daily_hour_limit": "La capacidad diaria configurada no es válida."})
+        if not limit.is_finite() or not Decimal("1") <= limit <= Decimal("16"):
+            raise ValidationError({"daily_hour_limit": "La capacidad diaria configurada no es válida."})
+        return limit
 
     @staticmethod
     def get_today_tasks(user, target_date=None):
@@ -53,8 +70,8 @@ class TaskService:
         queryset = LogisticTask.objects.filter(
             event__user=user,
             scheduled_date=target_date,
-            status__in=[LogisticTask.Status.PENDING, LogisticTask.Status.IN_PROGRESS],
-        ).exclude(status=LogisticTask.Status.COMPLETED)
+            status__in=TaskService.CAPACITY_STATUSES,
+        )
         if exclude_task_id:
             queryset = queryset.exclude(id=exclude_task_id)
 
@@ -79,9 +96,7 @@ class TaskService:
         Si se especifica max_date, ninguna fecha sugerida superará dicho límite.
         """
         suggestions = []
-        daily_limit = (
-            getattr(user, "daily_hour_limit", None) or cls.DEFAULT_DAILY_HOUR_LIMIT
-        )
+        daily_limit = cls.get_daily_hour_limit(user)
         for i in range(1, days_ahead + 1):
             candidate_date = target_date + timedelta(days=i)
             if max_date and candidate_date > max_date:
@@ -102,7 +117,7 @@ class TaskService:
         existing_totals = {}
         existing = LogisticTask.objects.filter(
             event__user=user,
-            status__in=[LogisticTask.Status.PENDING, LogisticTask.Status.IN_PROGRESS],
+            status__in=cls.CAPACITY_STATUSES,
         )
         if replace_event_id is not None:
             existing = existing.exclude(event_id=replace_event_id)
@@ -118,7 +133,6 @@ class TaskService:
             status = task.get("status", LogisticTask.Status.PENDING)
             if status in (
                 LogisticTask.Status.COMPLETED,
-                LogisticTask.Status.POSTPONED,
                 LogisticTask.Status.CANCELLED,
             ):
                 continue
@@ -130,9 +144,7 @@ class TaskService:
                 )
                 totals[date] = totals.get(date, Decimal("0.00")) + hours
 
-        daily_limit = (
-            getattr(user, "daily_hour_limit", None) or cls.DEFAULT_DAILY_HOUR_LIMIT
-        )
+        daily_limit = cls.get_daily_hour_limit(user)
 
         for date, hours in totals.items():
             if hours > daily_limit:
@@ -169,9 +181,7 @@ class TaskService:
         )
         additional_decimal = Decimal(str(additional_hours))
         projected_hours = current_hours + additional_decimal
-        daily_limit = (
-            getattr(user, "daily_hour_limit", None) or cls.DEFAULT_DAILY_HOUR_LIMIT
-        )
+        daily_limit = cls.get_daily_hour_limit(user)
 
         if projected_hours > daily_limit:
             suggested_dates = cls.get_suggested_dates(
@@ -199,9 +209,7 @@ class TaskService:
 
         tasks_qs = cls.get_today_tasks(user, target_date)
         total_hours = cls.get_daily_scheduled_hours(user, target_date)
-        daily_limit = (
-            getattr(user, "daily_hour_limit", None) or cls.DEFAULT_DAILY_HOUR_LIMIT
-        )
+        daily_limit = cls.get_daily_hour_limit(user)
         capacity_remaining = max(Decimal("0.00"), daily_limit - total_hours)
         is_overloaded = total_hours > daily_limit
 
@@ -213,6 +221,68 @@ class TaskService:
             "is_overloaded": is_overloaded,
             "tasks": tasks_qs,
         }
+
+    @classmethod
+    def postpone_task(cls, task: LogisticTask, user, note="") -> LogisticTask:
+        """Move a postponed task to the nearest future date with available capacity."""
+        today = timezone.localdate()
+        start_date = today + timedelta(days=1)
+
+        with transaction.atomic():
+            # Locking the organizer serializes concurrent postpone operations for that user.
+            locked_user = get_user_model().objects.select_for_update().get(pk=user.pk)
+            locked_task = LogisticTask.objects.select_for_update().select_related("event").get(
+                pk=task.pk, event__user_id=locked_user.pk
+            )
+            if locked_task.status in (LogisticTask.Status.COMPLETED, LogisticTask.Status.CANCELLED):
+                raise ValidationError({"status": "No se puede posponer una subtarea completada o cancelada."})
+
+            hours = Decimal(str(locked_task.estimated_hours))
+            if not hours.is_finite() or hours <= 0 or hours > cls.MAX_TASK_HOURS:
+                raise ValidationError({"estimated_hours": "Las horas estimadas de la subtarea no son válidas."})
+
+            max_date = locked_task.event.event_date if locked_task.event_id else start_date + timedelta(days=364)
+            end_date = min(max_date, start_date + timedelta(days=364))
+
+            daily_limit = cls.get_daily_hour_limit(locked_user)
+
+            new_date = None
+            for offset in range(max(0, (end_date - start_date).days + 1)):
+                candidate = start_date + timedelta(days=offset)
+                current_hours = cls.get_daily_scheduled_hours(
+                    locked_user, candidate, exclude_task_id=locked_task.id
+                )
+                if current_hours + hours <= daily_limit:
+                    new_date = candidate
+                    break
+
+            if new_date is None:
+                raise DailyOverloadConflict(
+                    detail={
+                        "error": "NoAvailableDate",
+                        "detail": "No se encontró una fecha futura con capacidad diaria suficiente.",
+                        "daily_hour_limit": str(daily_limit),
+                        "attempted_hours": str(hours),
+                    }
+                )
+
+            previous_date = locked_task.scheduled_date
+            if previous_date != new_date:
+                RescheduleHistory.objects.create(
+                    task=locked_task,
+                    user=locked_user,
+                    previous_date=previous_date,
+                    new_date=new_date,
+                    previous_hours=locked_task.estimated_hours,
+                    new_hours=locked_task.estimated_hours,
+                    reason="Posposición automática",
+                )
+            locked_task.scheduled_date = new_date
+            locked_task.status = LogisticTask.Status.POSTPONED
+            locked_task.notes = (note or "").strip()
+            locked_task.save(update_fields=["scheduled_date", "status", "notes", "updated_at"])
+
+        return locked_task
 
     @classmethod
     def reschedule_task(
