@@ -9,6 +9,7 @@ from .models import LogisticTask, TaskCategory
 from .serializers import (
     LogisticTaskListSerializer,
     LogisticTaskSerializer,
+    PostponeTaskSerializer,
     RescheduleHistorySerializer,
     RescheduleTaskSerializer,
     TaskCategorySerializer,
@@ -63,6 +64,24 @@ class LogisticTaskViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(scheduled_date=date_filter)
 
         return queryset
+
+    @extend_schema(
+        summary="Posponer una subtarea y buscar una fecha disponible",
+        request=PostponeTaskSerializer,
+        responses={200: LogisticTaskListSerializer},
+        tags=["Tasks"],
+    )
+    @action(detail=True, methods=["post"], url_path="postpone")
+    def postpone(self, request, pk=None):
+        task = self.get_object()
+        serializer = PostponeTaskSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        updated_task = TaskService.postpone_task(
+            task=task,
+            user=request.user,
+            note=serializer.validated_data.get("note") or "",
+        )
+        return Response(LogisticTaskListSerializer(updated_task).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="reschedule")
     def reschedule(self, request, pk=None):

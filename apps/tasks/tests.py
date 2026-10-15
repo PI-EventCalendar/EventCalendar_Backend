@@ -1,7 +1,12 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import close_old_connections
+from django.test import TestCase, TransactionTestCase
+from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 
 from apps.core.exceptions import DailyOverloadConflict
@@ -60,6 +65,42 @@ class TaskServiceOverloadTest(TestCase):
                 additional_hours=Decimal("2.00"),
             )
 
+    def test_postponed_tasks_consume_capacity_on_their_assigned_date(self):
+        target_date = date.today() + timedelta(days=1)
+        LogisticTask.objects.create(
+            event=self.event,
+            title="Tarea pospuesta",
+            scheduled_date=target_date,
+            estimated_hours=Decimal("4.50"),
+            status=LogisticTask.Status.POSTPONED,
+        )
+
+        with self.assertRaises(DailyOverloadConflict):
+            TaskService.validate_daily_overload(
+                user=self.user,
+                target_date=target_date,
+                additional_hours=Decimal("2.00"),
+            )
+
+    def test_invalid_capacity_is_not_replaced_by_the_default(self):
+        self.user.daily_hour_limit = Decimal("0.00")
+        with self.assertRaises(ValidationError):
+            TaskService.get_daily_dashboard(self.user, date.today())
+
+    @patch("apps.tasks.services.timezone.localdate", return_value=date(2026, 10, 15))
+    def test_postpone_rejects_non_positive_task_hours_without_mutation(self, _localdate):
+        task = LogisticTask.objects.create(
+            event=self.event,
+            title="Duración inválida",
+            scheduled_date=date(2026, 10, 15),
+            estimated_hours=Decimal("0.00"),
+        )
+        with self.assertRaises(ValidationError):
+            TaskService.postpone_task(task, self.user)
+        task.refresh_from_db()
+        self.assertEqual(task.scheduled_date, date(2026, 10, 15))
+        self.assertEqual(task.status, LogisticTask.Status.PENDING)
+
     def test_reschedule_task_and_history_creation(self):
         original_date = date.today()
         new_date = date.today() + timedelta(days=2)
@@ -90,6 +131,87 @@ class TaskServiceOverloadTest(TestCase):
         self.assertEqual(history.previous_hours, Decimal("3.00"))
         self.assertEqual(history.new_hours, Decimal("2.50"))
         self.assertEqual(history.reason, "Retraso en el envío de equipos")
+
+    @patch("apps.tasks.services.timezone.localdate")
+    def test_postpone_skips_today_and_full_dates_and_persists_history(self, localdate):
+        today = date(2026, 10, 15)
+        localdate.return_value = today
+        self.user.daily_hour_limit = Decimal("5.00")
+        self.user.save(update_fields=["daily_hour_limit"])
+        task = LogisticTask.objects.create(
+            event=self.event,
+            title="Tarea a posponer",
+            scheduled_date=today,
+            estimated_hours=Decimal("2.00"),
+        )
+        LogisticTask.objects.create(
+            event=self.event,
+            title="Mañana ocupada",
+            scheduled_date=today + timedelta(days=1),
+            estimated_hours=Decimal("4.00"),
+        )
+        LogisticTask.objects.create(
+            event=self.event,
+            title="Segundo día disponible",
+            scheduled_date=today + timedelta(days=2),
+            estimated_hours=Decimal("3.00"),
+        )
+
+        updated = TaskService.postpone_task(task, self.user, "  Proveedor retrasado  ")
+
+        self.assertEqual(updated.scheduled_date, today + timedelta(days=2))
+        self.assertEqual(updated.status, LogisticTask.Status.POSTPONED)
+        self.assertEqual(updated.notes, "Proveedor retrasado")
+        history = RescheduleHistory.objects.get(task=task)
+        self.assertEqual(history.new_date, updated.scheduled_date)
+        self.assertEqual(history.reason, "Posposición automática")
+
+    @patch("apps.tasks.services.timezone.localdate", return_value=date(2026, 10, 15))
+    def test_postpone_uses_latest_persisted_limit(self, _localdate):
+        task = LogisticTask.objects.create(
+            event=self.event,
+            title="Límite actualizado",
+            scheduled_date=date(2026, 10, 15),
+            estimated_hours=Decimal("2.00"),
+        )
+        LogisticTask.objects.create(
+            event=self.event,
+            title="Carga de mañana",
+            scheduled_date=date(2026, 10, 16),
+            estimated_hours=Decimal("2.00"),
+        )
+        User.objects.filter(pk=self.user.pk).update(daily_hour_limit=Decimal("3.00"))
+
+        updated = TaskService.postpone_task(task, self.user)
+
+        self.assertEqual(updated.scheduled_date, date(2026, 10, 17))
+
+    @patch("apps.tasks.services.timezone.localdate")
+    def test_postpone_rejects_when_no_future_date_has_capacity(self, localdate):
+        today = date(2026, 10, 15)
+        localdate.return_value = today
+        task = LogisticTask.objects.create(
+            event=self.event,
+            title="Tarea sin cupo",
+            scheduled_date=today,
+            estimated_hours=Decimal("2.00"),
+        )
+        for offset in range(1, 11):
+            LogisticTask.objects.create(
+                event=self.event,
+                title=f"Bloqueo {offset}",
+                scheduled_date=today + timedelta(days=offset),
+                estimated_hours=Decimal("6.00"),
+            )
+
+        with self.assertRaises(DailyOverloadConflict):
+            TaskService.postpone_task(task, self.user, "")
+
+        task.refresh_from_db()
+        self.assertEqual(task.scheduled_date, today)
+        self.assertEqual(task.status, LogisticTask.Status.PENDING)
+        self.assertEqual(task.notes, "")
+        self.assertFalse(RescheduleHistory.objects.filter(task=task).exists())
 
 
 class TaskRescheduleApiTest(TestCase):
@@ -183,3 +305,102 @@ class TaskRescheduleApiTest(TestCase):
         response = client.get(f"/api/v1/tasks/{self.task.id}/history/")
 
         self.assertEqual(response.status_code, 404)
+
+    def test_completion_note_is_trimmed_and_persisted(self):
+        response = self.client.patch(
+            f"/api/v1/tasks/{self.task.id}/",
+            {"status": "completed", "completion_note": "  Todo listo  "},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.completion_note, "Todo listo")
+        self.assertEqual(response.data["completion_note"], "Todo listo")
+        event_response = self.client.get(f"/api/v1/events/{self.event.id}/")
+        self.assertEqual(event_response.status_code, 200)
+        self.assertEqual(event_response.data["tasks"][0]["completion_note"], "Todo listo")
+
+    def test_completion_note_with_only_spaces_is_stored_as_null(self):
+        response = self.client.patch(
+            f"/api/v1/tasks/{self.task.id}/",
+            {"status": "completed", "completion_note": "   "},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.task.refresh_from_db()
+        self.assertIsNone(self.task.completion_note)
+
+    @patch("apps.tasks.services.timezone.localdate")
+    def test_postpone_api_persists_date_status_and_note(self, localdate):
+        today = date(2026, 10, 15)
+        localdate.return_value = today
+        response = self.client.post(
+            f"/api/v1/tasks/{self.task.id}/postpone/",
+            {"note": "Cambio de proveedor"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.scheduled_date, today + timedelta(days=1))
+        self.assertEqual(self.task.status, LogisticTask.Status.POSTPONED)
+        self.assertEqual(self.task.notes, "Cambio de proveedor")
+
+    @patch("apps.tasks.services.timezone.localdate")
+    def test_postpone_api_accepts_empty_note(self, localdate):
+        today = date(2026, 10, 15)
+        localdate.return_value = today
+        response = self.client.post(
+            f"/api/v1/tasks/{self.task.id}/postpone/",
+            {"note": "   "},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.notes, "")
+
+
+class ConcurrentTaskPostponeTest(TransactionTestCase):
+    reset_sequences = True
+
+    @patch("apps.tasks.services.timezone.localdate", return_value=date(2026, 10, 15))
+    def test_simultaneous_postpones_get_distinct_capacity_slots(self, _localdate):
+        user = User.objects.create_user(
+            username="parallel",
+            email="parallel@example.com",
+            password="securepassword123",
+            daily_hour_limit=Decimal("2.00"),
+        )
+        event = Event.objects.create(
+            user=user,
+            title="Evento concurrente",
+            event_date=date(2026, 10, 25),
+        )
+        tasks = [
+            LogisticTask.objects.create(
+                event=event,
+                title=f"Subtarea {index}",
+                scheduled_date=date(2026, 10, 15),
+                estimated_hours=Decimal("2.00"),
+            )
+            for index in range(2)
+        ]
+        start = Barrier(2)
+
+        def postpone(task_id):
+            close_old_connections()
+            try:
+                start.wait(timeout=10)
+                current_user = User.objects.get(pk=user.pk)
+                current_task = LogisticTask.objects.get(pk=task_id)
+                return TaskService.postpone_task(current_task, current_user).scheduled_date
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            dates = list(pool.map(postpone, [task.id for task in tasks]))
+
+        self.assertEqual(len(set(dates)), 2)
