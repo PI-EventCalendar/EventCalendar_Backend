@@ -42,7 +42,9 @@ class NestedTaskCreateSerializer(serializers.ModelSerializer):
             "estimated_hours",
             "status",
             "notes",
+            "completion_note",
         ]
+        read_only_fields = ["completion_note"]
 
 
 class EventSerializer(serializers.ModelSerializer):

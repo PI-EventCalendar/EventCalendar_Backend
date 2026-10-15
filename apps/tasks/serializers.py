@@ -51,6 +51,7 @@ class LogisticTaskListSerializer(serializers.ModelSerializer):
             "estimated_hours",
             "status",
             "notes",
+            "completion_note",
             "created_at",
             "updated_at",
         ]
@@ -86,6 +87,7 @@ class LogisticTaskSerializer(serializers.ModelSerializer):
             "estimated_hours",
             "status",
             "notes",
+            "completion_note",
             "created_at",
             "updated_at",
         ]
@@ -108,6 +110,9 @@ class LogisticTaskSerializer(serializers.ModelSerializer):
                 "No tienes permiso para utilizar esta categoría."
             )
         return value
+
+    def validate_completion_note(self, value):
+        return value.strip() or None if value is not None else None
 
     def validate(self, attrs):
         user = self.context["request"].user
@@ -146,6 +151,10 @@ class RescheduleTaskSerializer(serializers.Serializer):
     new_date = serializers.DateField(required=True)
     new_hours = serializers.DecimalField(max_digits=4, decimal_places=2, required=True)
     reason = serializers.CharField(required=True, min_length=5)
+
+
+class PostponeTaskSerializer(serializers.Serializer):
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=10000)
 
 
 class RescheduleHistorySerializer(serializers.ModelSerializer):

@@ -80,6 +80,7 @@ class LogisticTask(models.Model):
         default=Status.PENDING,
     )
     notes = models.TextField("notas adicionales", blank=True)
+    completion_note = models.TextField("nota de finalización", blank=True, null=True)
     created_at = models.DateTimeField("creado el", auto_now_add=True)
     updated_at = models.DateTimeField("actualizado el", auto_now=True)
 
