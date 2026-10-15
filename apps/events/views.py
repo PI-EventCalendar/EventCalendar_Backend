@@ -1,11 +1,16 @@
+from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
 from apps.core.permissions import IsOwner
+
 from .models import Event
 from .serializers import EventSerializer
 from .services import EventService
-from drf_spectacular.utils import extend_schema
-@extend_schema(tags=["Events"])
 
+
+@extend_schema(tags=["Events"])
 class EventViewSet(viewsets.ModelViewSet):
     """
     ViewSet para listar, crear, consultar, actualizar y eliminar eventos.
@@ -33,3 +38,16 @@ class EventViewSet(viewsets.ModelViewSet):
         el Evento y crear sus tareas asociadas (LogisticTask).
         """
         serializer.save(user=self.request.user)
+
+    @extend_schema(request=None, responses=EventSerializer)
+    @action(detail=True, methods=["post"], url_path="complete")
+    def complete(self, request, pk=None):
+        """
+        POST /api/v1/events/{id}/complete/
+
+        Finaliza el evento. Responde 400 si quedan subtareas sin completar
+        (las canceladas no cuentan).
+        """
+        event = self.get_object()
+        event = EventService.complete_event(event)
+        return Response(self.get_serializer(event).data)

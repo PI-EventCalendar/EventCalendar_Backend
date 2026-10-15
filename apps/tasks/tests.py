@@ -145,3 +145,41 @@ class TaskRescheduleApiTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["results"][0]["event_title"], self.event.title)
         self.assertEqual(response.data["results"][0]["event_course"], self.event.course)
+
+    def test_history_endpoint_returns_empty_list_without_history(self):
+        response = self.client.get(f"/api/v1/tasks/{self.task.id}/history/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+
+    def test_history_endpoint_returns_serialized_history(self):
+        new_date = date.today() + timedelta(days=2)
+        TaskService.reschedule_task(
+            task=self.task,
+            user=self.user,
+            new_date=new_date,
+            new_hours=Decimal("2.00"),
+            reason="Cambio de proveedor",
+        )
+
+        response = self.client.get(f"/api/v1/tasks/{self.task.id}/history/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["task"], self.task.id)
+        self.assertEqual(response.data[0]["user"], self.user.id)
+        self.assertEqual(response.data[0]["new_date"], new_date.isoformat())
+        self.assertEqual(response.data[0]["new_hours"], "2.00")
+
+    def test_history_endpoint_is_isolated_by_owner(self):
+        other_user = User.objects.create_user(
+            username="other-rescheduler",
+            email="other@example.com",
+            password="securepassword123",
+        )
+        client = APIClient()
+        client.force_authenticate(other_user)
+
+        response = client.get(f"/api/v1/tasks/{self.task.id}/history/")
+
+        self.assertEqual(response.status_code, 404)
