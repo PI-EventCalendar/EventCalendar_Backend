@@ -98,6 +98,15 @@ class LogisticTask(models.Model):
                     }
                 )
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
+        # Si la subtarea queda "abierta" (pendiente, en progreso o pospuesta)
+        # y el evento estaba finalizado, el evento vuelve a "En progreso".
+        # Las completadas y canceladas nunca reabren el evento.
+        if self.status not in (self.Status.COMPLETED, self.Status.CANCELLED):
+            self.event.reopen_if_completed()
+
     def __str__(self):
         return f"{self.title} - {self.scheduled_date} ({self.status})"
 

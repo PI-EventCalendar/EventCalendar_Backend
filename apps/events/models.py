@@ -7,6 +7,11 @@ class Event(models.Model):
     Modelo de Evento
     """
 
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pendiente"
+        IN_PROGRESS = "in_progress", "En progreso"
+        COMPLETED = "completed", "Finalizado"
+
     # relacion fk con el usuario
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -30,6 +35,16 @@ class Event(models.Model):
     # fecha límite de entrega
     event_date = models.DateField("fecha límite de entrega")
 
+    # Estado del evento. Solo pasa a COMPLETED mediante
+    # EventService.complete_event (que valida las subtareas) y vuelve a
+    # IN_PROGRESS automáticamente si se reabre alguna subtarea.
+    status = models.CharField(
+        "estado",
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+
     created_at = models.DateTimeField("creado el", auto_now_add=True)
     updated_at = models.DateTimeField("actualizado el", auto_now=True)
 
@@ -43,3 +58,14 @@ class Event(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.event_date})"
+
+    def reopen_if_completed(self):
+        """
+        Si el evento estaba finalizado, lo devuelve a "En progreso".
+
+        Se llama cuando una subtarea queda abierta (pendiente, en progreso
+        o pospuesta) o se crea una subtarea nueva en un evento finalizado.
+        """
+        if self.status == self.Status.COMPLETED:
+            self.status = self.Status.IN_PROGRESS
+            self.save(update_fields=["status", "updated_at"])

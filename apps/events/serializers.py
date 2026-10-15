@@ -65,6 +65,7 @@ class EventSerializer(serializers.ModelSerializer):
             "description",
             "location",
             "event_date",
+            "status",
             "progress_percentage",
             "total_tasks",
             "completed_tasks",
@@ -74,6 +75,10 @@ class EventSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            # El estado NO se cambia por POST/PATCH del evento:
+            # se finaliza con POST /events/{id}/complete/ (que valida las subtareas)
+            # y se reabre solo cuando una subtarea vuelve a estar abierta.
+            "status",
             "progress_percentage",
             "total_tasks",
             "completed_tasks",
