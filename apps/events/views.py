@@ -1,4 +1,4 @@
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,6 +10,14 @@ from .serializers import EventSerializer
 from .services import EventService
 
 
+@extend_schema_view(
+    list=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    retrieve=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    create=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    update=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    partial_update=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    destroy=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+)
 @extend_schema(tags=["Events"])
 class EventViewSet(viewsets.ModelViewSet):
     """

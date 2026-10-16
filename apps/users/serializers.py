@@ -28,6 +28,14 @@ class UserSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate(self, attrs):
+        limit = attrs.get("daily_hour_limit")
+        if self.instance is not None and limit is not None and limit != self.instance.daily_hour_limit:
+            from apps.tasks.services import TaskService
+
+            TaskService.validate_daily_limit_change(self.instance, limit)
+        return attrs
+
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Serializer para registro de nuevos usuarios."""

@@ -1,4 +1,4 @@
-from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, OpenApiTypes, extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -33,6 +33,14 @@ class TaskCategoryViewSet(viewsets.ModelViewSet):
         return TaskCategory.objects.filter(user=self.request.user)
 
 
+@extend_schema_view(
+    list=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    retrieve=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    create=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    update=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    partial_update=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+    destroy=extend_schema(responses={503: OpenApiResponse(description="Base de datos temporalmente no disponible.")}),
+)
 class LogisticTaskViewSet(viewsets.ModelViewSet):
     """
     CRUD para tareas logísticas con endpoints adicionales para reprogramar y consultar historial.
