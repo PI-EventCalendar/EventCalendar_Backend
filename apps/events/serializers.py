@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.tasks.models import LogisticTask
@@ -103,63 +105,42 @@ class EventSerializer(serializers.ModelSerializer):
     def get_completed_tasks(self, obj) -> int:
         return self._get_metrics(obj)["completed_tasks"]
 
-        def validate(self, attrs):
-            user = (
-                self.context.get("request").user if "request" in self.context else None
-            )
-            tasks_data = attrs.get("tasks", [])
-            event_date = attrs.get(
-                "event_date", getattr(self.instance, "event_date", None)
-            )
+    def validate(self, attrs):
+        tasks_data = attrs.get("tasks", [])
+        event_date = attrs.get("event_date", getattr(self.instance, "event_date", None))
 
-            if event_date and tasks_data:
-                for task_data in tasks_data:
-                    s_date = task_data.get("scheduled_date")
-                    if s_date and s_date > event_date:
-                        raise serializers.ValidationError(
-                            {
-                                "tasks": "La fecha programada de una tarea no puede ser posterior a la fecha del evento."
-                            }
-                        )
+        if event_date and tasks_data:
+            for task_data in tasks_data:
+                scheduled_date = task_data.get("scheduled_date")
+                if scheduled_date and scheduled_date > event_date:
+                    raise serializers.ValidationError({
+                        "tasks": "La fecha programada de una subtarea no puede ser posterior a la fecha del evento."
+                    })
 
-            if self.instance and event_date and "tasks" not in attrs:
-                if self.instance.tasks.filter(scheduled_date__gt=event_date).exists():
-                    raise serializers.ValidationError(
-                        {
-                            "event_date": "La nueva fecha del evento no puede ser anterior a las tareas ya programadas."
-                        }
-                    )
-
-            if user and tasks_data:
-                from apps.tasks.services import TaskService
-
-                daily_hours = {}
-                for task_data in tasks_data:
-                    s_date = task_data.get("scheduled_date")
-                    e_hours = task_data.get("estimated_hours")
-                    if s_date and e_hours:
-                        daily_hours[s_date] = daily_hours.get(
-                            s_date, Decimal("0.00")
-                        ) + Decimal(str(e_hours))
-                for s_date, total_add_hours in daily_hours.items():
-                    TaskService.validate_daily_overload(
-                        user=user,
-                        target_date=s_date,
-                        additional_hours=total_add_hours,
-                        max_date=event_date,
-                    )
-            return attrs
+        if self.instance and event_date and "tasks" not in attrs:
+            if self.instance.tasks.filter(scheduled_date__gt=event_date).exists():
+                raise serializers.ValidationError({
+                    "event_date": "La nueva fecha del evento no puede ser anterior a las subtareas ya programadas."
+                })
+        return attrs
 
     # --- LÓGICA DE CREACIÓN  ---
+    @transaction.atomic
     def create(self, validated_data):
         # 1. Asignamos el usuario
-        validated_data["user"] = self.context["request"].user
+        validated_data["user"] = get_user_model().objects.select_for_update().get(
+            pk=self.context["request"].user.pk
+        )
 
         # 2. Extraemos las tareas del JSON
         tasks_data = validated_data.pop("tasks", [])
         from apps.tasks.services import TaskService
 
-        TaskService.validate_task_plan(validated_data["user"], tasks_data)
+        TaskService.validate_task_plan(
+            validated_data["user"],
+            tasks_data,
+            max_date=validated_data.get("event_date"),
+        )
 
         # 3. Creamos el Evento principal usando super()
         event = super().create(validated_data)
@@ -176,6 +157,7 @@ class EventSerializer(serializers.ModelSerializer):
 
         return event
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         """
         Actualiza un evento existente y sus subtareas.
@@ -188,12 +170,18 @@ class EventSerializer(serializers.ModelSerializer):
 
         # Sacamos las subtareas antes de actualizar el evento.
         tasks_data = validated_data.pop("tasks", None)
+        instance.user = get_user_model().objects.select_for_update().get(
+            pk=instance.user_id
+        )
 
         if tasks_data is not None:
             from apps.tasks.services import TaskService
 
             TaskService.validate_task_plan(
-                instance.user, tasks_data, replace_event_id=instance.id
+                instance.user,
+                tasks_data,
+                replace_event_id=instance.id,
+                max_date=validated_data.get("event_date", instance.event_date),
             )
 
         # Actualizamos los datos principales del evento.

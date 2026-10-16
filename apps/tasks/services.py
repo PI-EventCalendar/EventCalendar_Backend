@@ -62,7 +62,9 @@ class TaskService:
         ).select_related("event", "category")
 
     @staticmethod
-    def get_daily_scheduled_hours(user, target_date, exclude_task_id=None) -> Decimal:
+    def get_daily_scheduled_hours(
+        user, target_date, exclude_task_id=None, exclude_event_id=None
+    ) -> Decimal:
         """
         Calcula la suma de horas programadas por un usuario para una fecha determinada.
         Permite excluir una tarea (útil en actualizaciones o reprogramaciones).
@@ -74,6 +76,8 @@ class TaskService:
         )
         if exclude_task_id:
             queryset = queryset.exclude(id=exclude_task_id)
+        if exclude_event_id:
+            queryset = queryset.exclude(event_id=exclude_event_id)
 
         aggregate_result = queryset.aggregate(total_hours=Sum("estimated_hours"))
         total = aggregate_result["total_hours"]
@@ -85,9 +89,11 @@ class TaskService:
         user,
         target_date,
         hours: Decimal,
-        days_ahead: int = 7,
+        days_ahead: int = 30,
         exclude_task_id=None,
+        exclude_event_id=None,
         max_date=None,
+        planned_loads=None,
     ) -> list[str]:
         """
         Calcula fechas alternativas a partir de target_date en las que el usuario
@@ -97,13 +103,19 @@ class TaskService:
         """
         suggestions = []
         daily_limit = cls.get_daily_hour_limit(user)
-        for i in range(1, days_ahead + 1):
-            candidate_date = target_date + timedelta(days=i)
+        # Buscar después de la fecha en conflicto; nunca se propone hoy.
+        first_future_date = max(target_date, timezone.localdate()) + timedelta(days=1)
+        for i in range(days_ahead):
+            candidate_date = first_future_date + timedelta(days=i)
             if max_date and candidate_date > max_date:
                 break
             current_hours = cls.get_daily_scheduled_hours(
-                user, candidate_date, exclude_task_id=exclude_task_id
+                user,
+                candidate_date,
+                exclude_task_id=exclude_task_id,
+                exclude_event_id=exclude_event_id,
             )
+            current_hours += Decimal(str((planned_loads or {}).get(candidate_date.isoformat(), 0)))
             if current_hours + Decimal(str(hours)) <= daily_limit:
                 suggestions.append(candidate_date.isoformat())
                 if len(suggestions) >= 3:
@@ -111,7 +123,7 @@ class TaskService:
         return suggestions
 
     @classmethod
-    def validate_task_plan(cls, user, tasks, replace_event_id=None):
+    def validate_task_plan(cls, user, tasks, replace_event_id=None, max_date=None):
         """Validate a complete plan against the user's global daily workload."""
         totals = {}
         existing_totals = {}
@@ -153,6 +165,9 @@ class TaskService:
                     user=user,
                     target_date=date,
                     hours=attempted_hours,
+                    exclude_event_id=replace_event_id,
+                    max_date=max_date,
+                    planned_loads=proposed_totals,
                 )
                 raise DailyOverloadConflict(
                     target_date=date,
@@ -200,7 +215,16 @@ class TaskService:
             )
 
     @classmethod
-    def get_daily_dashboard(cls, user, target_date=None) -> dict:
+    def get_daily_dashboard(
+        cls,
+        user,
+        target_date=None,
+        exclude_task_id=None,
+        exclude_event_id=None,
+        suggested_hours=None,
+        max_date=None,
+        planned_loads=None,
+    ) -> dict:
         """
         Genera el resumen de carga diaria para el dashboard del usuario.
         """
@@ -208,12 +232,21 @@ class TaskService:
             target_date = timezone.localdate()
 
         tasks_qs = cls.get_today_tasks(user, target_date)
-        total_hours = cls.get_daily_scheduled_hours(user, target_date)
+        if exclude_task_id:
+            tasks_qs = tasks_qs.exclude(id=exclude_task_id)
+        if exclude_event_id:
+            tasks_qs = tasks_qs.exclude(event_id=exclude_event_id)
+        total_hours = cls.get_daily_scheduled_hours(
+            user,
+            target_date,
+            exclude_task_id=exclude_task_id,
+            exclude_event_id=exclude_event_id,
+        )
         daily_limit = cls.get_daily_hour_limit(user)
         capacity_remaining = max(Decimal("0.00"), daily_limit - total_hours)
         is_overloaded = total_hours > daily_limit
 
-        return {
+        result = {
             "date": target_date,
             "daily_hour_limit": daily_limit,
             "total_hours_scheduled": total_hours,
@@ -221,6 +254,17 @@ class TaskService:
             "is_overloaded": is_overloaded,
             "tasks": tasks_qs,
         }
+        if suggested_hours is not None:
+            result["suggested_dates"] = cls.get_suggested_dates(
+                user=user,
+                target_date=target_date,
+                hours=suggested_hours,
+                exclude_task_id=exclude_task_id,
+                exclude_event_id=exclude_event_id,
+                max_date=max_date,
+                planned_loads=planned_loads,
+            )
+        return result
 
     @classmethod
     def postpone_task(cls, task: LogisticTask, user, note="") -> LogisticTask:
@@ -292,37 +336,36 @@ class TaskService:
         Reprograma una tarea logística, validando la regla de sobrecarga para la nueva fecha,
         generando la auditoría en RescheduleHistory y actualizando la tarea en una transacción atómica.
         """
-        if task.event and new_date > task.event.event_date:
-            raise ValidationError(
-                {
-                    "new_date": "La fecha reprogramada no puede ser posterior a la fecha del evento."
-                }
-            )
         new_hours_decimal = Decimal(str(new_hours))
-
-        # Validar sobrecarga en la nueva fecha (excluyendo la tarea si es el mismo día)
-        cls.validate_daily_overload(
-            user=user,
-            target_date=new_date,
-            additional_hours=new_hours_decimal,
-            exclude_task_id=task.id,
-            max_date=task.event.event_date if task.event else None,
-        )
-
         with transaction.atomic():
+            locked_user = get_user_model().objects.select_for_update().get(pk=user.pk)
+            locked_task = LogisticTask.objects.select_for_update().select_related("event").get(
+                pk=task.pk, event__user_id=locked_user.pk
+            )
+            if locked_task.event and new_date > locked_task.event.event_date:
+                raise ValidationError(
+                    {"new_date": "La fecha reprogramada no puede ser posterior a la fecha del evento."}
+                )
+            cls.validate_daily_overload(
+                user=locked_user,
+                target_date=new_date,
+                additional_hours=new_hours_decimal,
+                exclude_task_id=locked_task.id,
+                max_date=locked_task.event.event_date if locked_task.event else None,
+            )
             RescheduleHistory.objects.create(
-                task=task,
-                user=user,
-                previous_date=task.scheduled_date,
+                task=locked_task,
+                user=locked_user,
+                previous_date=locked_task.scheduled_date,
                 new_date=new_date,
-                previous_hours=task.estimated_hours,
+                previous_hours=locked_task.estimated_hours,
                 new_hours=new_hours_decimal,
                 reason=reason,
             )
 
-            task.scheduled_date = new_date
-            task.estimated_hours = new_hours_decimal
-            task.save(
+            locked_task.scheduled_date = new_date
+            locked_task.estimated_hours = new_hours_decimal
+            locked_task.save(
                 update_fields=[
                     "scheduled_date",
                     "estimated_hours",
@@ -330,4 +373,4 @@ class TaskService:
                 ]
             )
 
-        return task
+        return locked_task
