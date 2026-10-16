@@ -140,6 +140,7 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
     #SETTINGS SWAGGER
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'apps.core.exception_handler.exception_handler',
 }
 
 

@@ -3,6 +3,8 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
+from apps.events.models import Event
+from apps.tasks.models import LogisticTask
 
 
 User = get_user_model()
@@ -31,6 +33,17 @@ class CapacityApiTest(TestCase):
         for value in (0, -1, 17, 20):
             response = self.client.patch("/api/v1/auth/profile/", {"daily_hour_limit": value}, format="json")
             self.assertEqual(response.status_code, 400)
+
+    def test_capacity_change_rejects_a_limit_below_existing_daily_load(self):
+        event = Event.objects.create(user=self.user, title="Evento", event_date="2026-10-20")
+        LogisticTask.objects.create(
+            event=event, title="Montaje", scheduled_date="2026-10-17", estimated_hours="5.00"
+        )
+        response = self.client.patch(
+            "/api/v1/auth/profile/", {"daily_hour_limit": "4.00"}, format="json"
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["error"], "DailyOverloadConflict")
 
 
 class RegistrationApiTest(TestCase):

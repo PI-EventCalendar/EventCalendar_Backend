@@ -223,6 +223,19 @@ class TaskServiceOverloadTest(TestCase):
         self.assertEqual(history.new_date, updated.scheduled_date)
         self.assertEqual(history.reason, "Posposición automática")
 
+    @patch("apps.tasks.services.timezone.localdate", return_value=date(2026, 10, 16))
+    def test_postpone_never_moves_a_future_task_before_its_original_date(self, _localdate):
+        task = LogisticTask.objects.create(
+            event=self.event,
+            title="Tarea futura",
+            scheduled_date=date(2026, 10, 20),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        updated = TaskService.postpone_task(task, self.user)
+
+        self.assertEqual(updated.scheduled_date, date(2026, 10, 21))
+
     @patch("apps.tasks.services.timezone.localdate", return_value=date(2026, 10, 15))
     def test_postpone_uses_latest_persisted_limit(self, _localdate):
         task = LogisticTask.objects.create(
@@ -308,6 +321,23 @@ class TaskRescheduleApiTest(TestCase):
         self.assertEqual(response.data["scheduled_date"], new_date.isoformat())
         self.task.refresh_from_db()
         self.assertEqual(self.task.scheduled_date, new_date)
+
+    def test_reschedule_reopens_a_postponed_task_as_pending(self):
+        self.task.status = LogisticTask.Status.POSTPONED
+        self.task.save(update_fields=["status"])
+        new_date = date.today() + timedelta(days=3)
+        response = self.client.post(
+            f"/api/v1/tasks/{self.task.id}/reschedule/",
+            {
+                "new_date": new_date.isoformat(),
+                "new_hours": "1.00",
+                "reason": "Fecha confirmada",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, LogisticTask.Status.PENDING)
 
     def test_patch_rejects_an_invalid_scheduled_date(self):
         response = self.client.patch(

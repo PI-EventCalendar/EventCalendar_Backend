@@ -84,6 +84,37 @@ class TaskService:
         return Decimal(str(total)) if total is not None else Decimal("0.00")
 
     @classmethod
+    def get_overloaded_dates(cls, user, daily_limit: Decimal) -> list[dict]:
+        """Return open-task dates that would exceed a proposed daily limit."""
+        rows = (
+            LogisticTask.objects.filter(
+                event__user=user,
+                status__in=cls.CAPACITY_STATUSES,
+            )
+            .values("scheduled_date")
+            .annotate(total_hours=Sum("estimated_hours"))
+            .order_by("scheduled_date")
+        )
+        return [
+            {"date": row["scheduled_date"].isoformat(), "hours": str(row["total_hours"])}
+            for row in rows
+            if Decimal(str(row["total_hours"])) > daily_limit
+        ]
+
+    @classmethod
+    def validate_daily_limit_change(cls, user, daily_limit: Decimal) -> None:
+        conflicts = cls.get_overloaded_dates(user, daily_limit)
+        if conflicts:
+            raise DailyOverloadConflict(
+                detail={
+                    "error": "DailyOverloadConflict",
+                    "detail": "El nuevo límite dejaría subtareas por encima de la capacidad diaria.",
+                    "daily_hour_limit": str(daily_limit),
+                    "conflicts": conflicts,
+                }
+            )
+
+    @classmethod
     def get_suggested_dates(
         cls,
         user,
@@ -270,7 +301,6 @@ class TaskService:
     def postpone_task(cls, task: LogisticTask, user, note="") -> LogisticTask:
         """Move a postponed task to the nearest future date with available capacity."""
         today = timezone.localdate()
-        start_date = today + timedelta(days=1)
 
         with transaction.atomic():
             # Locking the organizer serializes concurrent postpone operations for that user.
@@ -284,6 +314,8 @@ class TaskService:
             hours = Decimal(str(locked_task.estimated_hours))
             if not hours.is_finite() or hours <= 0 or hours > cls.MAX_TASK_HOURS:
                 raise ValidationError({"estimated_hours": "Las horas estimadas de la subtarea no son válidas."})
+
+            start_date = max(today + timedelta(days=1), locked_task.scheduled_date + timedelta(days=1))
 
             max_date = locked_task.event.event_date if locked_task.event_id else start_date + timedelta(days=364)
             end_date = min(max_date, start_date + timedelta(days=364))
@@ -365,10 +397,13 @@ class TaskService:
 
             locked_task.scheduled_date = new_date
             locked_task.estimated_hours = new_hours_decimal
+            if locked_task.status == LogisticTask.Status.POSTPONED:
+                locked_task.status = LogisticTask.Status.PENDING
             locked_task.save(
                 update_fields=[
                     "scheduled_date",
                     "estimated_hours",
+                    "status",
                     "updated_at",
                 ]
             )
