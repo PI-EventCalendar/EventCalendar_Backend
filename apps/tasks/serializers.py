@@ -183,3 +183,6 @@ class DailyDashboardSerializer(serializers.Serializer):
     capacity_remaining = serializers.DecimalField(max_digits=4, decimal_places=2)
     is_overloaded = serializers.BooleanField()
     tasks = LogisticTaskListSerializer(many=True)
+    suggested_dates = serializers.ListField(
+        child=serializers.CharField(), required=False
+    )

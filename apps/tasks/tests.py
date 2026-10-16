@@ -47,6 +47,63 @@ class TaskServiceOverloadTest(TestCase):
         hours = TaskService.get_daily_scheduled_hours(self.user, target_date)
         self.assertEqual(hours, Decimal("4.00"))
 
+    @patch("apps.tasks.services.timezone.localdate", return_value=date(2026, 10, 15))
+    def test_suggestions_include_other_draft_tasks_and_use_the_current_user_limit(self, _localdate):
+        target = date(2026, 10, 15)
+        self.user.daily_hour_limit = Decimal("6.00")
+        self.user.save(update_fields=["daily_hour_limit"])
+        LogisticTask.objects.create(
+            event=self.event, title="Mañana ocupada", scheduled_date=date(2026, 10, 16),
+            estimated_hours=Decimal("3.00"),
+        )
+        suggestions = TaskService.get_suggested_dates(
+            user=self.user,
+            target_date=target,
+            hours=Decimal("2.00"),
+            days_ahead=3,
+            max_date=date(2026, 10, 18),
+            planned_loads={"2026-10-16": Decimal("2.00")},
+        )
+        self.assertEqual(suggestions, ["2026-10-17", "2026-10-18"])
+        nearest = TaskService.get_suggested_dates(
+            user=self.user,
+            target_date=date(2026, 10, 22),
+            hours=Decimal("1.00"),
+            max_date=date(2026, 10, 25),
+        )
+        self.assertEqual(nearest[0], "2026-10-23")
+
+    @patch("apps.tasks.services.timezone.localdate", return_value=date(2026, 10, 16))
+    def test_suggestions_skip_full_next_day_and_continue_to_later_dates(self, _localdate):
+        target = date(2026, 10, 16)
+        self.user.daily_hour_limit = Decimal("2.00")
+        self.user.save(update_fields=["daily_hour_limit"])
+        LogisticTask.objects.create(
+            event=self.event, title="Ocupada mañana", scheduled_date=date(2026, 10, 17),
+            estimated_hours=Decimal("2.00"),
+        )
+        suggestions = TaskService.get_suggested_dates(
+            user=self.user,
+            target_date=target,
+            hours=Decimal("2.00"),
+            max_date=date(2026, 10, 20),
+        )
+        self.assertEqual(suggestions[0], "2026-10-18")
+
+        User.objects.filter(pk=self.user.pk).update(daily_hour_limit=Decimal("4.00"))
+        self.user.refresh_from_db()
+        dashboard = TaskService.get_daily_dashboard(self.user, target)
+        self.assertEqual(dashboard["daily_hour_limit"], Decimal("4.00"))
+
+    def test_daily_load_api_rejects_invalid_suggestion_parameters(self):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        response = client.get(
+            "/api/v1/dashboard/load/",
+            {"date": "2026-10-15", "suggested_hours": "2", "planned_loads": "not-json"},
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_overload_throws_409_conflict(self):
         target_date = date.today()
         LogisticTask.objects.create(
@@ -190,6 +247,8 @@ class TaskServiceOverloadTest(TestCase):
     def test_postpone_rejects_when_no_future_date_has_capacity(self, localdate):
         today = date(2026, 10, 15)
         localdate.return_value = today
+        self.event.event_date = today + timedelta(days=10)
+        self.event.save(update_fields=["event_date"])
         task = LogisticTask.objects.create(
             event=self.event,
             title="Tarea sin cupo",
