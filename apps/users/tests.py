@@ -44,6 +44,10 @@ class CapacityApiTest(TestCase):
         )
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.data["error"], "DailyOverloadConflict")
+        conflict = response.data["conflicts"][0]
+        self.assertEqual(conflict["date"], "2026-10-17")
+        self.assertEqual(str(conflict["tasks"][0]["id"]), str(LogisticTask.objects.get(title="Montaje").id))
+        self.assertEqual(conflict["tasks"][0]["title"], "Montaje")
 
 
 class RegistrationApiTest(TestCase):
