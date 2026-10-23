@@ -96,7 +96,20 @@ class TaskService:
             .order_by("scheduled_date")
         )
         return [
-            {"date": row["scheduled_date"].isoformat(), "hours": str(row["total_hours"])}
+            {
+                "date": row["scheduled_date"].isoformat(),
+                "hours": str(row["total_hours"]),
+                "tasks": list(
+                    LogisticTask.objects.filter(
+                        event__user=user,
+                        scheduled_date=row["scheduled_date"],
+                        status__in=cls.CAPACITY_STATUSES,
+                    )
+                    .select_related("event")
+                    .values("id", "title", "event__title", "estimated_hours")
+                    .order_by("id")
+                ),
+            }
             for row in rows
             if Decimal(str(row["total_hours"])) > daily_limit
         ]
